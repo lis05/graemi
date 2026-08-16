@@ -1,0 +1,31 @@
+[workspace]
+members = [
+    ".",
+    "crates/graemi-core",
+    "crates/graemi-compress",
+    "crates/graemi-decompress",
+    "crates/graemi-ffi",
+]
+resolver = "2"
+
+[package]
+name = "graemi"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+graemi-core = { path = "crates/graemi-core" }
+graemi-compress = { path = "crates/graemi-compress" }
+graemi-decompress = { path = "crates/graemi-decompress" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
