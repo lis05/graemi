@@ -31,6 +31,9 @@
 //! word from thom the original data is placed in the dictionary, and all non-overlapping
 //! occurences of it in the data are removed.
 //!
+//! A faster compression mode is available, which simply counts the frequencies of all words
+//! regardless of whether they are overlapping.
+//!
 //! Checkpoints are calculated after the file has been compressed. The number of checkpoints can be
 //! customized: more checkpoints will take more space, but will speed up decompression.
 //!
@@ -49,7 +52,10 @@
 //! ceil(C / 8) bytes - controls (8 per byte), with padding at the end
 //! C bytes - values (literals or match indexes)
 //!
-use graemi_core::{DICT_LEN, WORD_LEN, Word};
+
+use std::collections::HashMap;
+
+use graemi_core::{Word, DICT_LEN, WORD_LEN};
 
 pub fn compress_bound(size: usize, checkpoints: usize) -> usize {
     return 20 + DICT_LEN * WORD_LEN + checkpoints * 8 + (size + 7) / 8 + size;
@@ -71,53 +77,50 @@ pub fn compress(input: &[u8], output: &mut [u8], mut checkpoints: usize) -> usiz
     let mut next_word: usize = 0;
     let mut used_bytes = vec![false; input.len()];
 
-    while next_word < dict.len() {
-        let word_available = |i, used_bytes: &Vec<bool>| {
-            if i + WORD_LEN > used_bytes.len() {
+    let mut word_positions: HashMap<Word, Vec<usize>> = HashMap::new();
+    for i in 0..=input.len().saturating_sub(WORD_LEN) {
+        let w: Word = input[i..i + WORD_LEN].try_into().unwrap();
+        word_positions.entry(w).or_default().push(i);
+    }
+
+    let word_available = |i: usize, used_bytes: &Vec<bool>| {
+        if i + WORD_LEN > used_bytes.len() {
+            return false;
+        }
+        for ii in 0..WORD_LEN {
+            if used_bytes[i + ii] {
                 return false;
             }
+        }
+        true
+    };
 
-            for ii in 0..WORD_LEN {
-                if used_bytes[i + ii] {
-                    return false;
-                }
-            }
-
-            true
-        };
-
+    while next_word < dict.len() {
         let mut best_word = Word::default();
         let mut best_count: usize = 0;
-        let mut best_pos: usize = 0;
+        let mut best_hits: Vec<usize> = Vec::new();
 
-        for i in 0..input.len() {
-            if !word_available(i, &used_bytes) {
-                continue;
-            }
+        for (word, positions) in &word_positions {
+            let mut count = 0usize;
+            let mut next_allowed = 0usize;
+            let mut hits: Vec<usize> = Vec::new();
 
-            let word: Word = input[i..i + WORD_LEN].try_into().unwrap();
-            let mut count = 1;
-            let mut ii = i + WORD_LEN;
-
-            while ii + WORD_LEN <= input.len() {
-                if !word_available(ii, &used_bytes) {
-                    ii += 1;
+            for &p in positions {
+                if p < next_allowed {
                     continue;
                 }
-
-                let maybe_word: Word = input[ii..ii + WORD_LEN].try_into().unwrap();
-                if word == maybe_word {
-                    count += 1;
-                    ii += WORD_LEN;
-                } else {
-                    ii += 1;
+                if !word_available(p, &used_bytes) {
+                    continue;
                 }
+                count += 1;
+                hits.push(p);
+                next_allowed = p + WORD_LEN;
             }
 
             if count > best_count {
-                best_word = word;
+                best_word = *word;
                 best_count = count;
-                best_pos = i;
+                best_hits = hits;
             }
         }
 
@@ -127,22 +130,14 @@ pub fn compress(input: &[u8], output: &mut [u8], mut checkpoints: usize) -> usiz
 
         dict[next_word] = best_word;
         next_word += 1;
-        while best_pos + WORD_LEN <= input.len() {
-            if !word_available(best_pos, &used_bytes) {
-                best_pos += 1;
-                continue;
-            }
 
-            let maybe_word: Word = input[best_pos..best_pos + WORD_LEN].try_into().unwrap();
-            if best_word == maybe_word {
-                for i in best_pos..best_pos + WORD_LEN {
-                    used_bytes[i] = true;
-                }
-                best_pos += WORD_LEN;
-            } else {
-                best_pos += 1;
+        for p in best_hits {
+            for i in p..p + WORD_LEN {
+                used_bytes[i] = true;
             }
         }
+
+        word_positions.remove(&best_word);
     }
 
     // Step 2: calculate DP
