@@ -28,7 +28,7 @@ pub fn decompress(input: &[u8], output: &mut [u8], offset: usize) -> bool {
     let mut checkpoint = 0;
     let mut c_control = 0;
     let mut c_offset = 0;
-    for pow2 in (0..k.ilog2()).rev() {
+    for pow2 in (0..=k.ilog2()).rev() {
         let new_checkpoint = checkpoint + (1 << pow2);
         if new_checkpoint < k {
             let new_control: usize;
