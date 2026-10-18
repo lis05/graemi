@@ -53,7 +53,7 @@
 //! C bytes - values (literals or match indexes)
 //!
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use graemi_core::{Word, DICT_LEN, WORD_LEN};
 
@@ -77,7 +77,7 @@ pub fn compress(input: &[u8], output: &mut [u8], mut checkpoints: usize) -> usiz
     let mut next_word: usize = 0;
     let mut used_bytes = vec![false; input.len()];
 
-    let mut word_positions: HashMap<Word, Vec<usize>> = HashMap::new();
+    let mut word_positions: BTreeMap<Word, Vec<usize>> = BTreeMap::new();
     for i in 0..=input.len().saturating_sub(WORD_LEN) {
         let w: Word = input[i..i + WORD_LEN].try_into().unwrap();
         word_positions.entry(w).or_default().push(i);
